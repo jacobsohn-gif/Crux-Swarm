@@ -4,12 +4,14 @@ Serves:
 1. The Installable Mobile PWA Cockpit (`GET /`, `/manifest.json`, `/sw.js`).
 2. Authenticated REST / JSON-RPC Endpoints (`/api/...`) protected by constant-time
    HMAC Bearer / Pairing Token verification:
-   - `GET  /api/overview`: Fleet status, pending mobile questions, recent events, ledger integrity.
+   - `GET  /api/overview`: Fleet status, pending mobile questions, active tasks, file leases, events, ledger.
    - `GET  /api/cells/<id>/threads`: Full conversation thread DAG & thought traces for a cell.
    - `GET  /api/cells/<id>/viewport?wake=1`: Live socket-activated OS/Browser viewport frame.
+   - `POST /api/cells/<id>/input`: Interactive touch-to-click, typing, key, and URL navigation into the cell browser.
    - `POST /api/questions/<id>/answer`: 1-tap mobile answer to `ask_user` or `policy_approval`.
    - `POST /api/cells/<id>/steer`: Live mid-turn `/steer` from your phone.
    - `POST /api/cells/<id>/btw`: Zero-history `/btw` side question from your phone.
+   - `POST /api/tasks`: Enqueue a new 4-Gear task onto the Stigmergic Spine.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import pathlib
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from crux_swarm.spine.hub import StigmergicSpineHub
+from crux_swarm.spine.hub import StigmergicSpineHub, SwarmGear
 
 MOBILE_ASSETS_DIR = pathlib.Path(__file__).resolve().parent.parent / "mobile"
 
@@ -29,7 +31,7 @@ class CruxSpineGatewayHandler(BaseHTTPRequestHandler):
     hub: StigmergicSpineHub
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-        return  # Keep server output clean during tests and daemon operation
+        return
 
     def _check_auth(self, parsed_url: Any) -> bool:
         auth_hdr = self.headers.get("Authorization", "")
@@ -65,7 +67,6 @@ class CruxSpineGatewayHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        # Public PWA shell assets (API data calls require pairing token)
         if path in ("/", "/index.html"):
             self._send_static("index.html", "text/html; charset=utf-8")
             return
@@ -91,6 +92,8 @@ class CruxSpineGatewayHandler(BaseHTTPRequestHandler):
                     "cells": self.hub.list_cells(),
                     "pending_questions": self.hub.list_mobile_questions(status="PENDING"),
                     "recent_questions": self.hub.list_mobile_questions(),
+                    "tasks": self.hub.list_tasks(),
+                    "file_leases": self.hub.list_file_leases(),
                     "events": self.hub.list_events(limit=30),
                     "ledger": {
                         "chain_valid": valid_chain,
@@ -99,6 +102,14 @@ class CruxSpineGatewayHandler(BaseHTTPRequestHandler):
                     },
                 },
             )
+            return
+
+        if path == "/api/tasks":
+            self._send_json(200, {"tasks": self.hub.list_tasks()})
+            return
+
+        if path == "/api/leases":
+            self._send_json(200, {"file_leases": self.hub.list_file_leases()})
             return
 
         if path.startswith("/api/cells/") and path.endswith("/threads"):
@@ -147,6 +158,15 @@ class CruxSpineGatewayHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             body = {}
 
+        if path == "/api/tasks":
+            title = str(body.get("title", "Swarm Task")).strip()
+            objective = str(body.get("objective", title)).strip()
+            gear_raw = str(body.get("gear", "auto")).lower().strip()
+            gear = SwarmGear(gear_raw) if gear_raw in {g.value for g in SwarmGear} else SwarmGear.AUTO
+            card = self.hub.enqueue_task(title, objective, gear=gear)
+            self._send_json(201, {"status": "ENQUEUED", "task": card.to_dict()})
+            return
+
         if path.startswith("/api/questions/") and path.endswith("/answer"):
             qid = path.strip("/").split("/")[2]
             ans = str(body.get("answer", "")).strip()
@@ -158,6 +178,25 @@ class CruxSpineGatewayHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"status": "ANSWERED", "question": card.to_dict()})
             except KeyError as exc:
                 self._send_json(404, {"error": str(exc)})
+            return
+
+        if path.startswith("/api/cells/") and path.endswith("/input"):
+            cell_id = path.strip("/").split("/")[2]
+            cell = self.hub.get_cell(cell_id)
+            if cell is None:
+                self._send_json(404, {"error": f"Unknown cell: {cell_id}"})
+                return
+            action = str(body.get("action", "click")).strip()
+            snap = cell.display.dispatch_input(
+                action,  # type: ignore[arg-type]
+                x=int(body["x"]) if "x" in body and body["x"] is not None else None,
+                y=int(body["y"]) if "y" in body and body["y"] is not None else None,
+                text=str(body["text"]) if "text" in body and body["text"] is not None else None,
+                key=str(body["key"]) if "key" in body and body["key"] is not None else None,
+                url=str(body["url"]) if "url" in body and body["url"] is not None else None,
+            )
+            self.hub.sync_cell_state(cell)
+            self._send_json(200, snap.to_dict())
             return
 
         if path.startswith("/api/cells/") and path.endswith("/steer"):

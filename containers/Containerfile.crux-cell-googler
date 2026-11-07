@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1.7
+# ==============================================================================
+# Crux-Swarm — Internal Googler & Cloudtop Crux-Cell Overlay (doe-1.c.googlers.com)
+# Extends the Symmetric Crux-Cell Rocky Linux 9 STIG Base with:
+#   - Google Cloud SDK (`gcloud`, `bq`) for Argolis & GCP operations
+#   - Cloudtop BeyondCorp / ECP Certificate & LOAS/ADC Launch Bootstrap
+#   - Built-in `crux-evals` + Googler Helper MCP Suite mounts
+#   - Lazy Socket-Activated Full OS Desktop + Chromium CDP (`:9222`)
+# ==============================================================================
+
+FROM docker.io/rockylinux/rockylinux:9.4 AS crux-cell-googler
+
+LABEL org.opencontainers.image.title="Crux-Swarm Symmetric Crux-Cell (Googler / Cloudtop Edition)" \
+      org.opencontainers.image.description="Symmetric Crux-Cell Pod with Google Cloud SDK, LOAS/BeyondCorp Cert Mounts, Thread DAG, Consensus Ledger, Crux-Evals, and Lazy OS/Browser" \
+      org.opencontainers.image.version="0.3.0-googler"
+
+# [STIG RHEL-09-215015] Enforce GPG check + disable weak deps
+RUN sed -i 's/^gpgcheck=.*/gpgcheck=1/g' /etc/dnf/dnf.conf && \
+    echo "install_weak_deps=False" >> /etc/dnf/dnf.conf
+
+COPY <<-'EOF' /etc/yum.repos.d/google-cloud-sdk.repo
+[google-cloud-cli]
+name=Google Cloud CLI
+baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+
+RUN dnf install -y --setopt=tsflags=nodocs,nocaps --setopt=install_weak_deps=False epel-release && \
+    dnf install -y --setopt=tsflags=nodocs,nocaps --setopt=install_weak_deps=False \
+        python3.11 \
+        python3.11-pip \
+        git \
+        sqlite \
+        chromium \
+        xorg-x11-server-Xvfb \
+        mesa-dri-drivers \
+        google-cloud-cli \
+        ca-certificates \
+        findutils && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf/* /var/log/dnf*
+
+RUN groupadd -g 10001 cruxcell && \
+    useradd -u 10001 -g 10001 -d /opt/crux-cell -s /sbin/nologin -c "Crux-Cell Googler Agent" cruxcell && \
+    mkdir -p /opt/crux-cell /var/opt/crux-cell/workspace /var/opt/crux-cell/state \
+             /var/opt/crux-cell/loas /var/opt/crux-cell/ecp /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix && \
+    chown -R 10001:10001 /opt/crux-cell /var/opt/crux-cell
+
+WORKDIR /opt/crux-cell
+COPY pyproject.toml README.md /opt/crux-cell/
+COPY crux_swarm/ /opt/crux-cell/crux_swarm/
+COPY containers/entrypoint_cell.sh /opt/crux-cell/entrypoint_cell.sh
+
+RUN chmod 0755 /opt/crux-cell/entrypoint_cell.sh && \
+    python3.11 -m pip install --no-cache-dir -e /opt/crux-cell
+
+ENV PYTHONUNBUFFERED="1" \
+    PYTHONDONTWRITEBYTECODE="1" \
+    CRUX_CELL_WORKSPACE="/var/opt/crux-cell/workspace" \
+    CRUX_CELL_STATE_DIR="/var/opt/crux-cell/state" \
+    CRUX_DISPLAY=":99" \
+    CRUX_CDP_PORT="9222" \
+    CRUX_BROWSER_IDLE_TIMEOUT="180" \
+    CLOUDSDK_CONFIG="/var/opt/crux-cell/state/gcloud"
+
+USER 10001:10001
+EXPOSE 8765 9222
+
+ENTRYPOINT ["/opt/crux-cell/entrypoint_cell.sh"]
