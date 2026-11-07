@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crux-swarm"
+version = "0.2.0"
+description = "Crux-Swarm: Symmetric Crux-Cell Container Runtime, Lazy Socket-Activated OS/Browser Supervisor, Stigmergic Spine & Mobile PWA Cockpit."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = []
+
+[project.scripts]
+crux-swarm = "crux_swarm.cli:main"
+crux-cell = "crux_swarm.cli:main_cell"
+crux-spine = "crux_swarm.cli:main_spine"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["crux_swarm*"]
+
+[tool.setuptools.package-data]
+"crux_swarm" = ["mobile/*.html", "mobile/*.json", "mobile/*.js"]

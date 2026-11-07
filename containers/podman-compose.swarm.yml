@@ -1,0 +1,90 @@
+version: "3.9"
+
+# ==============================================================================
+# Crux-Swarm — Symmetric Crux-Cell Pod Fleet + Stigmergic Spine + Mobile Cockpit
+# Every agent runs inside an identical, security-hardened `Crux-Cell` container
+# over a shared read-only overlayfs base image, with its own Conversation Thread
+# DAG, SecurityFirewall, ShadowGit worktree, Crux-Evals, and on-demand OS/Browser.
+# ==============================================================================
+services:
+  crux-spine:
+    build:
+      context: ..
+      dockerfile: containers/Containerfile.crux-cell
+    image: localhost/crux/crux-cell:0.2.0
+    container_name: crux-stigmergic-spine
+    command: ["python3", "-m", "crux_swarm.cli", "spine", "--host", "0.0.0.0", "--port", "8890"]
+    ports:
+      - "127.0.0.1:8890:8890"
+    volumes:
+      - ./data/spine:/var/opt/crux-cell/state:Z
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  crux-cell-01:
+    image: localhost/crux/crux-cell:0.2.0
+    container_name: crux-cell-01
+    depends_on:
+      - crux-spine
+    environment:
+      - CRUX_CELL_ID=cell-01
+      - CRUX_CELL_ROLE=architect
+      - CRUX_MODEL_FAMILY=gemini
+      - CRUX_SPINE_URL=http://crux-spine:8890
+    volumes:
+      - ./data/cells/cell-01:/var/opt/crux-cell/state:Z
+      - ./data/workspaces/cell-01:/var/opt/crux-cell/workspace:Z
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  crux-cell-02:
+    image: localhost/crux/crux-cell:0.2.0
+    container_name: crux-cell-02
+    depends_on:
+      - crux-spine
+    environment:
+      - CRUX_CELL_ID=cell-02
+      - CRUX_CELL_ROLE=implementer
+      - CRUX_MODEL_FAMILY=claude
+      - CRUX_SPINE_URL=http://crux-spine:8890
+    volumes:
+      - ./data/cells/cell-02:/var/opt/crux-cell/state:Z
+      - ./data/workspaces/cell-02:/var/opt/crux-cell/workspace:Z
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  crux-cell-03:
+    image: localhost/crux/crux-cell:0.2.0
+    container_name: crux-cell-03
+    depends_on:
+      - crux-spine
+    environment:
+      - CRUX_CELL_ID=cell-03
+      - CRUX_CELL_ROLE=adversarial-verifier
+      - CRUX_MODEL_FAMILY=openai
+      - CRUX_SPINE_URL=http://crux-spine:8890
+    volumes:
+      - ./data/cells/cell-03:/var/opt/crux-cell/state:Z
+      - ./data/workspaces/cell-03:/var/opt/crux-cell/workspace:Z
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

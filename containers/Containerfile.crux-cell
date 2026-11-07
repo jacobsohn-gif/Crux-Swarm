@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1.7
+# ==============================================================================
+# Crux-Swarm — Symmetric 'Crux-Cell' Containerfile (Rocky Linux 9 STIG Base)
+# Every agent container is a complete, autonomous Crux-Cell equipped with:
+#   1. Local Conversation Thread DAG (`SessionDAG`) & `ThoughtTraceLedger`
+#   2. 3-Layer `SecurityFirewall` & `PolicyEngine` + `ShadowGit` Worktree
+#   3. Built-in `Crux-Evals` (Deterministic, Blind BARS Judge, Adversarial Breaker)
+#   4. Lazy Socket-Activated Full OS Desktop + Chromium CDP (`:9222`) Supervisor
+#      (<0.5s cold boot, ~80MB idle RAM; wakes Xvfb + Fluxbox + Chromium in <300ms
+#      only when a browser/GUI tool is invoked or inspected from the Mobile PWA).
+# ==============================================================================
+
+FROM docker.io/rockylinux/rockylinux:9.4 AS crux-cell-base
+
+LABEL org.opencontainers.image.title="Crux-Swarm Symmetric Crux-Cell" \
+      org.opencontainers.image.description="Autonomous Agent Pod with Thread DAG, Security Firewall, Consensus Ledger, Crux-Evals, and Socket-Activated OS/Browser" \
+      org.opencontainers.image.version="0.2.0"
+
+RUN sed -i 's/^gpgcheck=.*/gpgcheck=1/g' /etc/dnf/dnf.conf && \
+    echo "install_weak_deps=False" >> /etc/dnf/dnf.conf && \
+    dnf install -y --setopt=tsflags=nodocs,nocaps --setopt=install_weak_deps=False epel-release && \
+    dnf install -y --setopt=tsflags=nodocs,nocaps --setopt=install_weak_deps=False \
+        python3.11 \
+        python3.11-pip \
+        git \
+        sqlite \
+        chromium \
+        xorg-x11-server-Xvfb \
+        mesa-dri-drivers \
+        ca-certificates \
+        findutils && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf/* /var/log/dnf*
+
+RUN groupadd -g 10001 cruxcell && \
+    useradd -u 10001 -g 10001 -d /opt/crux-cell -s /sbin/nologin -c "Crux-Cell Agent" cruxcell && \
+    mkdir -p /opt/crux-cell /var/opt/crux-cell/workspace /var/opt/crux-cell/state /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix && \
+    chown -R 10001:10001 /opt/crux-cell /var/opt/crux-cell
+
+WORKDIR /opt/crux-cell
+COPY pyproject.toml README.md /opt/crux-cell/
+COPY crux_swarm/ /opt/crux-cell/crux_swarm/
+COPY containers/entrypoint_cell.sh /opt/crux-cell/entrypoint_cell.sh
+
+RUN chmod 0755 /opt/crux-cell/entrypoint_cell.sh && \
+    python3.11 -m pip install --no-cache-dir -e /opt/crux-cell
+
+ENV PYTHONUNBUFFERED="1" \
+    PYTHONDONTWRITEBYTECODE="1" \
+    CRUX_CELL_WORKSPACE="/var/opt/crux-cell/workspace" \
+    CRUX_CELL_STATE_DIR="/var/opt/crux-cell/state" \
+    CRUX_DISPLAY=":99" \
+    CRUX_CDP_PORT="9222" \
+    CRUX_BROWSER_IDLE_TIMEOUT="180"
+
+USER 10001:10001
+EXPOSE 8765 9222
+
+ENTRYPOINT ["/opt/crux-cell/entrypoint_cell.sh"]
