@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Crux-Swarm Mobile Cockpit</title>
+  <link rel="manifest" href="/manifest.json" />
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #151c28;
+      --border: #263248;
+      --accent: #38bdf8;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding-bottom: 84px;
+    }
+    header {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(11, 15, 23, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .brand { font-weight: 700; font-size: 17px; letter-spacing: 0.3px; }
+    .badge {
+      font-size: 11px; padding: 4px 8px; border-radius: 999px;
+      background: rgba(34, 197, 94, 0.15); color: var(--green); font-weight: 600;
+    }
+    main { padding: 14px; max-width: 680px; margin: 0 auto; display: grid; gap: 14px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px;
+    }
+    .card-title {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px;
+      color: var(--muted); margin-bottom: 10px; font-weight: 600;
+    }
+    .q-item {
+      border: 1px solid var(--amber); background: rgba(245, 158, 11, 0.08);
+      border-radius: 12px; padding: 12px; margin-bottom: 10px;
+    }
+    .q-header { font-size: 12px; color: var(--amber); font-weight: 700; margin-bottom: 4px; }
+    .q-text { font-size: 15px; margin-bottom: 10px; line-height: 1.4; }
+    .opt-grid { display: grid; gap: 8px; }
+    button {
+      background: #1e293b; color: var(--text); border: 1px solid var(--border);
+      padding: 11px 14px; border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; text-align: left;
+    }
+    button.primary { background: var(--accent); color: #020617; border-color: var(--accent); text-align: center; }
+    .cell-pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+    .pill {
+      padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border);
+      background: #0f172a; white-space: nowrap; font-size: 13px; cursor: pointer;
+    }
+    .pill.active { border-color: var(--accent); color: var(--accent); }
+    .thread-box {
+      max-height: 280px; overflow-y: auto; display: grid; gap: 8px;
+      background: #090d14; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+    }
+    .turn { font-size: 13px; line-height: 1.4; padding: 8px; border-radius: 8px; background: #111827; }
+    .turn .role { font-size: 11px; color: var(--accent); font-weight: 700; text-transform: uppercase; }
+    .turn .thought { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 4px; }
+    .viewport-img { width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-top: 8px; }
+    .composer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(15, 23, 42, 0.96); border-top: 1px solid var(--border);
+      padding: 10px 14px; display: flex; gap: 8px;
+    }
+    .composer input {
+      flex: 1; background: #090d14; color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Crux-Swarm Cockpit</div>
+    <div class="badge" id="ledger-badge">Ledger Verified</div>
+  </header>
+  <main>
+    <section class="card" id="inbox-section">
+      <div class="card-title">Away-From-Desk Decision Inbox (ask_user & Approvals)</div>
+      <div id="questions-list">Loading active questions...</div>
+    </section>
+    <section class="card">
+      <div class="card-title">Symmetric Crux-Cell Pods</div>
+      <div class="cell-pills" id="cells-bar"></div>
+      <div class="thread-box" id="thread-view" style="margin-top:10px;"></div>
+    </section>
+    <section class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Socket-Activated Cell OS & Browser Viewport</span>
+        <button onclick="wakeAndRefreshViewport()" style="padding:5px 10px;font-size:12px;">Wake & Inspect</button>
+      </div>
+      <img id="viewport-frame" class="viewport-img" alt="Cell Viewport" />
+    </section>
+  </main>
+  <div class="composer">
+    <input id="steer-input" placeholder="Send live /steer or /btw question to active cell..." />
+    <button class="primary" onclick="sendSteer()">Steer</button>
+    <button onclick="sendBtw()">/btw</button>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token') || localStorage.getItem('crux_mobile_token') || '';
+    if (token) localStorage.setItem('crux_mobile_token', token);
+    let activeCellId = null;
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}, opts.headers || {});
+      const res = await fetch(path, Object.assign({}, opts, {headers}));
+      return res.json();
+    }
+
+    async function refreshOverview() {
+      const data = await api('/api/overview');
+      if (data.error) return;
+      const lb = document.getElementById('ledger-badge');
+      lb.textContent = data.ledger.chain_valid ? `Ledger OK (${data.ledger.block_count} blocks)` : 'LEDGER TAMPERED';
+
+      const qBox = document.getElementById('questions-list');
+      if (!data.pending_questions || data.pending_questions.length === 0) {
+        qBox.innerHTML = '<div style="color:var(--muted);font-size:13px;">No pending questions — all cells running autonomously.</div>';
+      } else {
+        qBox.innerHTML = data.pending_questions.map(q => `
+          <div class="q-item">
+            <div class="q-header">[${q.cell_id}] ${q.kind.toUpperCase()}</div>
+            <div class="q-text">${q.question}</div>
+            <div class="opt-grid">
+              ${q.options.map(opt => `<button onclick="answerQuestion('${q.question_id}', '${opt.replace(/'/g, "")}')">${opt}</button>`).join('')}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      const cellsBar = document.getElementById('cells-bar');
+      if (data.cells && data.cells.length > 0) {
+        if (!activeCellId) activeCellId = data.cells[0].cell_id;
+        cellsBar.innerHTML = data.cells.map(c => `
+          <div class="pill ${c.cell_id === activeCellId ? 'active' : ''}" onclick="selectCell('${c.cell_id}')">
+            ${c.cell_id} (${c.role}) · ${c.phase} · Display:${c.display_state}
+          </div>
+        `).join('');
+        await refreshActiveCell(false);
+      }
+    }
+
+    async function selectCell(cid) {
+      activeCellId = cid;
+      await refreshOverview();
+    }
+
+    async function refreshActiveCell(wake) {
+      if (!activeCellId) return;
+      const th = await api(`/api/cells/${activeCellId}/threads`);
+      const box = document.getElementById('thread-view');
+      if (th.turns) {
+        box.innerHTML = th.turns.map(t => `
+          <div class="turn">
+            <div class="role">${t.role} ${t.tool_name ? '(' + t.tool_name + ')' : ''}</div>
+            <div>${t.content}</div>
+            ${t.thought_trace ? `<div class="thought">Thought: ${t.thought_trace}</div>` : ''}
+          </div>
+        `).join('');
+      }
+      const vp = await api(`/api/cells/${activeCellId}/viewport?wake=${wake ? 1 : 0}`);
+      if (vp.svg_data_uri) {
+        document.getElementById('viewport-frame').src = vp.svg_data_uri;
+      }
+    }
+
+    async function wakeAndRefreshViewport() {
+      await refreshActiveCell(true);
+      await refreshOverview();
+    }
+
+    async function answerQuestion(qid, ans) {
+      await api(`/api/questions/${qid}/answer`, {method: 'POST', body: JSON.stringify({answer: ans})});
+      await refreshOverview();
+    }
+
+    async function sendSteer() {
+      const inp = document.getElementById('steer-input');
+      if (!inp.value.trim() || !activeCellId) return;
+      await api(`/api/cells/${activeCellId}/steer`, {method: 'POST', body: JSON.stringify({text: inp.value})});
+      inp.value = '';
+      await refreshOverview();
+    }
+
+    async function sendBtw() {
+      const inp = document.getElementById('steer-input');
+      if (!inp.value.trim() || !activeCellId) return;
+      const res = await api(`/api/cells/${activeCellId}/btw`, {method: 'POST', body: JSON.stringify({question: inp.value})});
+      alert(res.reply || JSON.stringify(res));
+    }
+
+    refreshOverview();
+    setInterval(refreshOverview, 4000);
+  </script>
+</body>
+</html>

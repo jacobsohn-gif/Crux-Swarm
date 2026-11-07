@@ -1,0 +1,9 @@
+{
+  "name": "Crux-Swarm Mobile Cockpit",
+  "short_name": "Crux-Swarm",
+  "description": "Away-from-desk Mobile Cockpit for Symmetric Crux-Cell Agents, Live Thread Steering, 1-Tap Approvals & Browser Viewport Inspection.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17"
+}
